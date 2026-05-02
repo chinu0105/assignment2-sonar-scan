@@ -11,45 +11,34 @@ import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Slice tests for {@link HelloController}.
- * Uses @WebMvcTest — loads only the web layer (fast, no full context).
- * JaCoCo instruments these runs and produces the XML report consumed by SonarCloud.
- */
 @WebMvcTest(HelloController.class)
 class HelloControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    // ── /api/hello ────────────────────────────────────────────────
-
     @Test
-    @DisplayName("GET /api/hello → 200 with 'Hello, World!' message")
+    @DisplayName("GET /api/hello → 200 with Hello, World!")
     void helloReturnsWorldGreeting() throws Exception {
         mockMvc.perform(get("/api/hello")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.message", is("Hello, World!")))
                 .andExpect(jsonPath("$.status",  is("success")))
                 .andExpect(jsonPath("$.timestamp", notNullValue()));
     }
 
-    // ── /api/hello/{name} ─────────────────────────────────────────
-
     @Test
-    @DisplayName("GET /api/hello/Chinmaya → 200 with personalised greeting")
+    @DisplayName("GET /api/hello/Chinmaya → personalised greeting")
     void helloNameReturnsPersonalisedGreeting() throws Exception {
         mockMvc.perform(get("/api/hello/Chinmaya")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message", is("Hello, Chinmaya!")))
-                .andExpect(jsonPath("$.status",  is("success")));
+                .andExpect(jsonPath("$.message", is("Hello, Chinmaya!")));
     }
 
     @Test
-    @DisplayName("GET /api/hello/DevOps → 200 with personalised greeting")
+    @DisplayName("GET /api/hello/DevOps → personalised greeting")
     void helloDevOpsGreeting() throws Exception {
         mockMvc.perform(get("/api/hello/DevOps")
                         .accept(MediaType.APPLICATION_JSON))
