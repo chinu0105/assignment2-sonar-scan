@@ -1,0 +1,122 @@
+# ════════════════════════════════════════════════════════════════════
+#  CI Pipeline: Build · Test · SonarCloud Scan · Publish Results
+#  App   : Spring Boot Hello World
+#  Stack : Java 17 · Maven · JaCoCo · SonarCloud
+# ════════════════════════════════════════════════════════════════════
+
+name: CI — Build & SonarCloud Scan
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - master
+
+# Cancel in-progress runs for the same ref (save CI minutes)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build · Test · SonarCloud
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ── 1. Checkout source ────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history required for SonarCloud blame / new-code analysis
+          fetch-depth: 0
+
+      # ── 2. Set up JDK 17 ─────────────────────────────────────────
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ── 3. Cache Maven local repository ──────────────────────────
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # ── 4. Cache SonarCloud analysis data ────────────────────────
+      - name: Cache SonarCloud scanner data
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-sonar-
+
+      # ── 5. Compile the project ────────────────────────────────────
+      - name: Compile (mvn compile)
+        run: mvn --batch-mode compile
+
+      # ── 6. Run unit tests + generate JaCoCo XML coverage report ──
+      - name: Test & generate coverage report (mvn test)
+        run: mvn --batch-mode test
+
+      # ── 7. Upload test results as GitHub Actions artifact ─────────
+      - name: Upload Surefire test results
+        if: always()                        # upload even on test failure
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-test-results
+          path: target/surefire-reports/
+          retention-days: 7
+
+      # ── 8. Upload JaCoCo coverage report ─────────────────────────
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: target/site/jacoco/
+          retention-days: 7
+
+      # ── 9. SonarCloud Scan ────────────────────────────────────────
+      #  Reads JaCoCo XML from target/site/jacoco/jacoco.xml
+      #  Publishes Quality Gate status back to the PR / commit via
+      #  the GITHUB_TOKEN (checks API).
+      - name: SonarCloud Scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # PR decoration + checks
+          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}    # SonarCloud auth
+        run: |
+          mvn --batch-mode sonar:sonar \
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} \
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.java.source=17 \
+            -Dsonar.qualitygate.wait=true
+
+      # ── 10. Publish Quality Gate result as job summary ────────────
+      - name: Publish Quality Gate Summary
+        if: always()
+        run: |
+          echo "## 🔍 SonarCloud Quality Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Project | \`${{ vars.SONAR_PROJECT_KEY }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Organization | \`${{ vars.SONAR_ORGANIZATION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [View full report on SonarCloud](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }})" >> $GITHUB_STEP_SUMMARY
